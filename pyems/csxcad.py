@@ -230,6 +230,7 @@ def construct_polygon(
     elevation: float,
     priority: int,
     transform: CSTransform = None,
+    thickness: float = None
 ):
     """
     """
@@ -241,6 +242,7 @@ def construct_polygon(
             points=poly_points,
             norm_dir=normal.intval(),
             elevation=elevation,
+            thickness=thickness
         )
         return prim
 
@@ -487,18 +489,28 @@ def _add_polygon(
     points: List[float],
     norm_dir: int,
     elevation: float,
+    thickness: float=None
 ) -> CSPrimitives:
     """
     """
     points = fp_nearest(points)
     elevation = fp_nearest(elevation)
 
-    prim = prop.AddPolygon(
-        priority=priority,
-        points=points,
-        norm_dir=norm_dir,
-        elevation=elevation,
-    )
+    if thickness:
+        prim = prop.AddLinPoly(
+            priority=priority,
+            points=points,
+            norm_dir=norm_dir,
+            elevation=elevation,
+            length=thickness
+        )
+    else:
+        prim = prop.AddPolygon(
+            priority=priority,
+            points=points,
+            norm_dir=norm_dir,
+            elevation=elevation,
+        )
     return prim
 
 
