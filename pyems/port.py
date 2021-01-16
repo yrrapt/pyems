@@ -556,93 +556,93 @@ class MicrostripPort(Port):
         """
         Set measurement probes.
         """
-        trace_box = deepcopy(self._trace_box())
-        trace_perp_axis = self._trace_perpendicular_axis().axis
-        trace_perp_low = trace_box.min_corner[trace_perp_axis]
-        trace_perp_high = trace_box.max_corner[trace_perp_axis]
-        trace_perp_mid = np.average([trace_perp_low, trace_perp_high])
+        # trace_box = deepcopy(self._trace_box())
+        # trace_perp_axis = self._trace_perpendicular_axis().axis
+        # trace_perp_low = trace_box.min_corner[trace_perp_axis]
+        # trace_perp_high = trace_box.max_corner[trace_perp_axis]
+        # trace_perp_mid = np.average([trace_perp_low, trace_perp_high])
 
-        excitation_axis = self._excitation_axis.axis
-        if self._excitation_axis.is_positive_direction():
-            gnd_pos = self.box.min_corner[excitation_axis]
-            trace_pos = self.box.max_corner[excitation_axis]
-        else:
-            gnd_pos = self.box.max_corner[excitation_axis]
-            trace_pos = self.box.min_corner[excitation_axis]
+        # excitation_axis = self._excitation_axis.axis
+        # if self._excitation_axis.is_positive_direction():
+        #     gnd_pos = self.box.min_corner[excitation_axis]
+        #     trace_pos = self.box.max_corner[excitation_axis]
+        # else:
+        #     gnd_pos = self.box.max_corner[excitation_axis]
+        #     trace_pos = self.box.min_corner[excitation_axis]
 
-        prop_axis = self._propagation_axis.axis
-        trace_prop_low = trace_box.min_corner[prop_axis]
-        trace_prop_high = trace_box.max_corner[prop_axis]
-        if self._propagation_axis.is_positive_direction():
-            prop_index, vxmid = mesh.nearest_mesh_line(
-                prop_axis,
-                trace_box.min_corner[prop_axis]
-                + (
-                    self.measurement_shift * (trace_prop_high - trace_prop_low)
-                ),
-            )
-        else:
-            prop_index, vxmid = mesh.nearest_mesh_line(
-                prop_axis,
-                trace_box.max_corner[prop_axis]
-                - (
-                    self.measurement_shift * (trace_prop_high - trace_prop_low)
-                ),
-            )
-        mesh.set_lines_equidistant(0, prop_index - 1, prop_index + 1)
+        # prop_axis = self._propagation_axis.axis
+        # trace_prop_low = trace_box.min_corner[prop_axis]
+        # trace_prop_high = trace_box.max_corner[prop_axis]
+        # if self._propagation_axis.is_positive_direction():
+        #     prop_index, vxmid = mesh.nearest_mesh_line(
+        #         prop_axis,
+        #         trace_box.min_corner[prop_axis]
+        #         + (
+        #             self.measurement_shift * (trace_prop_high - trace_prop_low)
+        #         ),
+        #     )
+        # else:
+        #     prop_index, vxmid = mesh.nearest_mesh_line(
+        #         prop_axis,
+        #         trace_box.max_corner[prop_axis]
+        #         - (
+        #             self.measurement_shift * (trace_prop_high - trace_prop_low)
+        #         ),
+        #     )
+        # mesh.set_lines_equidistant(0, prop_index - 1, prop_index + 1)
 
-        v_prop_pos = [
-            mesh.get_mesh_line(
-                prop_axis, prop_index - self._propagation_direction()
-            ),
-            mesh.get_mesh_line(prop_axis, prop_index),
-            mesh.get_mesh_line(
-                prop_axis, prop_index + self._propagation_direction()
-            ),
-        ]
-        i_prop_pos = [
-            (v_prop_pos[0] + v_prop_pos[1]) / 2,
-            (v_prop_pos[1] + v_prop_pos[2]) / 2,
-        ]
+        # v_prop_pos = [
+        #     mesh.get_mesh_line(
+        #         prop_axis, prop_index - self._propagation_direction()
+        #     ),
+        #     mesh.get_mesh_line(prop_axis, prop_index),
+        #     mesh.get_mesh_line(
+        #         prop_axis, prop_index + self._propagation_direction()
+        #     ),
+        # ]
+        # i_prop_pos = [
+        #     (v_prop_pos[0] + v_prop_pos[1]) / 2,
+        #     (v_prop_pos[1] + v_prop_pos[2]) / 2,
+        # ]
 
-        for idx in range(3):
-            box = Box3(
-                Coordinate3(None, None, None), Coordinate3(None, None, None)
-            )
-            box.min_corner[prop_axis] = v_prop_pos[idx]
-            box.max_corner[prop_axis] = v_prop_pos[idx]
-            box.min_corner[trace_perp_axis] = trace_perp_mid
-            box.max_corner[trace_perp_axis] = trace_perp_mid
-            box.min_corner[excitation_axis] = gnd_pos
-            box.max_corner[excitation_axis] = trace_pos
-            self.vprobes.append(
-                Probe(
-                    sim=self._sim,
-                    box=box,
-                    p_type=0,
-                    weight=self._excitation_direction(),
-                )
-            )
+        # for idx in range(3):
+        #     box = Box3(
+        #         Coordinate3(None, None, None), Coordinate3(None, None, None)
+        #     )
+        #     box.min_corner[prop_axis] = v_prop_pos[idx]
+        #     box.max_corner[prop_axis] = v_prop_pos[idx]
+        #     box.min_corner[trace_perp_axis] = trace_perp_mid
+        #     box.max_corner[trace_perp_axis] = trace_perp_mid
+        #     box.min_corner[excitation_axis] = gnd_pos
+        #     box.max_corner[excitation_axis] = trace_pos
+        #     self.vprobes.append(
+        #         Probe(
+        #             sim=self._sim,
+        #             box=box,
+        #             p_type=0,
+        #             weight=self._excitation_direction(),
+        #         )
+        #     )
 
-        for idx in range(2):
-            box = Box3(
-                Coordinate3(None, None, None), Coordinate3(None, None, None)
-            )
-            box.min_corner[prop_axis] = i_prop_pos[idx]
-            box.max_corner[prop_axis] = i_prop_pos[idx]
-            box.min_corner[trace_perp_axis] = trace_perp_low
-            box.max_corner[trace_perp_axis] = trace_perp_high
-            box.min_corner[excitation_axis] = trace_pos
-            box.max_corner[excitation_axis] = trace_pos
-            self.iprobes.append(
-                Probe(
-                    sim=self._sim,
-                    box=box,
-                    p_type=1,
-                    normal_axis=self._propagation_axis,
-                    weight=-self._propagation_direction(),  # TODO negative??
-                )
-            )
+        # for idx in range(2):
+        #     box = Box3(
+        #         Coordinate3(None, None, None), Coordinate3(None, None, None)
+        #     )
+        #     box.min_corner[prop_axis] = i_prop_pos[idx]
+        #     box.max_corner[prop_axis] = i_prop_pos[idx]
+        #     box.min_corner[trace_perp_axis] = trace_perp_low
+        #     box.max_corner[trace_perp_axis] = trace_perp_high
+        #     box.min_corner[excitation_axis] = trace_pos
+        #     box.max_corner[excitation_axis] = trace_pos
+        #     self.iprobes.append(
+        #         Probe(
+        #             sim=self._sim,
+        #             box=box,
+        #             p_type=1,
+        #             normal_axis=self._propagation_axis,
+        #             weight=-self._propagation_direction(),  # TODO negative??
+        #         )
+        #     )
 
     def _feed_box(self, mesh: Mesh) -> Box3:
         """
@@ -1860,3 +1860,276 @@ class CoaxPort(Port):
             delay=self._delay,
         )
         self.feeds.append(feed)
+
+
+class LumpedPort(Port):
+    """
+    Lumped element port.
+    """
+
+    def __init__(
+        self,
+        sim: Simulation,
+        box: Box3,
+        propagation_axis: Axis,
+        excitation_axis: Axis,
+        number: int,
+        excite: bool = False,
+        feed_impedance: float = None,
+        feed_shift: float = 0.2,
+        ref_impedance: float = None,
+        measurement_shift: float = 0.5,
+    ):
+        """
+        :param sim: Simulation to which microstrip port is added.
+        :param box: 3D box specifying the port dimensions.  The trace
+            dimensions are given by the rectangle perpendicular to the
+            `excitation_axis` and at the max value for that excitation
+            axis.  The excitation will dimensions are from the minimum
+            `exctitation_axis` value to the maximum value.  The order
+            of coordinates does not matter.
+        :param propagation_axis: Specifies the coordinate axis and
+            direction in which the signal propagation occurs.
+        :param excitation_axis: Axis and direction of signal
+            excitation.
+        :param feed_impedance: The feeding impedance value.  The
+            default value of None creates an infinite impedance.  If
+            you use the default value ensure that the port is
+            terminated by a PML.  When performing a characteristic
+            impedance measurement use the default value and PML, which
+            gives better results than attempting to use a matching
+            impedance.
+        :param feed_shift: The amount by which to shift the feed as a
+            fraction of the total port length.  The final position
+            will be influenced by this value but adjusted for the mesh
+            used.
+        :param ref_impedance: The impedance used to calculate the port
+            voltage and current values.  If left as the default value
+            of None, the calculated characteristic impedance is used
+            to calculate these values.
+        :param measurement_shift: The amount by which to shift the
+            measurement probes as a fraction of the total port length.
+            By default, the measurement port is placed halfway between
+            the start and stop.  Like `feed_shift`, the final position
+            will be adjusted for the mesh used.  This is important
+            since voltage probes need to lie on mesh lines and current
+            probes need to be placed equidistant between them.
+        """
+        super().__init__(sim=sim, number=number, excite=excite)
+        self._box = box
+        self._box.set_increasing()
+        self._excite = excite
+        self._propagation_axis = propagation_axis
+        self._excitation_axis = excitation_axis
+        self._check_axes_perpendicular()
+        self.feed_impedance = feed_impedance
+        self.feed_shift = feed_shift
+        self._ref_impedance = ref_impedance
+        self.measurement_shift = measurement_shift
+
+
+    @property
+    def box(self) -> Box3:
+        """
+        """
+        return self._box
+
+    def propagation_axis(self) -> Axis:
+        """
+        """
+        return self._propagation_axis
+
+    def get_feed_shift(self) -> float:
+        """
+        """
+        return self.feed_shift
+
+    def _check_axes_perpendicular(self) -> None:
+        """
+        """
+        if self._propagation_axis.axis == self._excitation_axis.axis:
+            raise ValueError(
+                "Excitation and propagation axes must be perpendicular."
+            )
+
+
+    def _trace_box(self) -> Box3:
+        """
+        Get the trace box.
+        """
+        trace_box = deepcopy(self.box)
+        excitation_axis = self._excitation_axis.axis
+        if self._excitation_axis.is_positive_direction():
+            trace_box.min_corner[excitation_axis] = trace_box.max_corner[
+                excitation_axis
+            ]
+        else:
+            trace_box.max_corner[excitation_axis] = trace_box.min_corner[
+                excitation_axis
+            ]
+
+        return trace_box
+
+    def _propagation_direction(self) -> int:
+        """
+        Get the direction of the signal propagation.
+        """
+        return self._propagation_axis.direction
+
+    def _excitation_direction(self) -> int:
+        """
+        Get the direction of the signal excitation.
+        """
+        return self._excitation_axis.direction
+
+    def _trace_perpendicular_axis(self) -> Axis:
+        """
+        """
+        axes = [0, 1, 2]
+        axes.remove(self._propagation_axis.axis)
+        axes.remove(self._excitation_axis.axis)
+        trace_perp_axis = axes[0]
+        if self._propagation_axis.is_positive_direction():
+            return Axis(trace_perp_axis)
+        else:
+            return Axis(trace_perp_axis, -1)
+
+    def _set_feed(self, mesh: Mesh) -> None:
+        """
+        Set excitation feed.
+        """
+        excite_type = None
+        if self.excite:
+            excite_type = 0
+
+        feed = Feed(
+            sim=self._sim,
+            box=self._feed_box(mesh),
+            excite_direction=self._excitation_axis.as_list(),
+            excite_type=excite_type,
+            impedance=self.feed_impedance,
+        )
+        self.feeds.append(feed)
+
+    def _set_probes(self, mesh: Mesh) -> None:
+        """
+        Set measurement probes.
+        """
+        trace_box = deepcopy(self._trace_box())
+        trace_perp_axis = self._trace_perpendicular_axis().axis
+        trace_perp_low = trace_box.min_corner[trace_perp_axis]
+        trace_perp_high = trace_box.max_corner[trace_perp_axis]
+        trace_perp_mid = np.average([trace_perp_low, trace_perp_high])
+
+        excitation_axis = self._excitation_axis.axis
+        if self._excitation_axis.is_positive_direction():
+            gnd_pos = self.box.min_corner[excitation_axis]
+            trace_pos = self.box.max_corner[excitation_axis]
+        else:
+            gnd_pos = self.box.max_corner[excitation_axis]
+            trace_pos = self.box.min_corner[excitation_axis]
+
+        prop_axis = self._propagation_axis.axis
+        trace_prop_low = trace_box.min_corner[prop_axis]
+        trace_prop_high = trace_box.max_corner[prop_axis]
+        if self._propagation_axis.is_positive_direction():
+            prop_index, vxmid = mesh.nearest_mesh_line(
+                prop_axis,
+                trace_box.min_corner[prop_axis]
+                + (
+                    self.measurement_shift * (trace_prop_high - trace_prop_low)
+                ),
+            )
+        else:
+            prop_index, vxmid = mesh.nearest_mesh_line(
+                prop_axis,
+                trace_box.max_corner[prop_axis]
+                - (
+                    self.measurement_shift * (trace_prop_high - trace_prop_low)
+                ),
+            )
+        mesh.set_lines_equidistant(0, prop_index - 1, prop_index + 1)
+
+        v_prop_pos = [
+            mesh.get_mesh_line(
+                prop_axis, prop_index - self._propagation_direction()
+            ),
+            mesh.get_mesh_line(prop_axis, prop_index),
+            mesh.get_mesh_line(
+                prop_axis, prop_index + self._propagation_direction()
+            ),
+        ]
+        i_prop_pos = [
+            (v_prop_pos[0] + v_prop_pos[1]) / 2,
+            (v_prop_pos[1] + v_prop_pos[2]) / 2,
+        ]
+
+        for idx in range(3):
+            box = Box3(
+                Coordinate3(None, None, None), Coordinate3(None, None, None)
+            )
+            box.min_corner[prop_axis] = v_prop_pos[idx]
+            box.max_corner[prop_axis] = v_prop_pos[idx]
+            box.min_corner[trace_perp_axis] = trace_perp_mid
+            box.max_corner[trace_perp_axis] = trace_perp_mid
+            box.min_corner[excitation_axis] = gnd_pos
+            box.max_corner[excitation_axis] = trace_pos
+            self.vprobes.append(
+                Probe(
+                    sim=self._sim,
+                    box=box,
+                    p_type=0,
+                    weight=self._excitation_direction(),
+                )
+            )
+
+        for idx in range(2):
+            box = Box3(
+                Coordinate3(None, None, None), Coordinate3(None, None, None)
+            )
+            box.min_corner[prop_axis] = i_prop_pos[idx]
+            box.max_corner[prop_axis] = i_prop_pos[idx]
+            box.min_corner[trace_perp_axis] = trace_perp_low
+            box.max_corner[trace_perp_axis] = trace_perp_high
+            box.min_corner[excitation_axis] = trace_pos
+            box.max_corner[excitation_axis] = trace_pos
+            self.iprobes.append(
+                Probe(
+                    sim=self._sim,
+                    box=box,
+                    p_type=1,
+                    normal_axis=self._propagation_axis,
+                    weight=-self._propagation_direction(),  # TODO negative??
+                )
+            )
+
+    def _feed_box(self, mesh: Mesh) -> Box3:
+        """
+        Get the excitation feed box.
+        """
+        box = deepcopy(self.box)
+        feed_axis = self._excitation_axis.axis
+        if not self._excitation_axis.is_positive_direction():
+            old_max = box.max_corner[feed_axis]
+            box.max_corner[feed_axis] = box.min_corner[feed_axis]
+            box.min_corner[feed_axis] = old_max
+
+        prop_axis = self._propagation_axis.axis
+        prop_dist = (
+            self.box.max_corner[prop_axis] - self.box.min_corner[prop_axis]
+        )
+        if self._propagation_axis.is_positive_direction():
+            _, prop_pos = mesh.nearest_mesh_line(
+                prop_axis,
+                self.box.min_corner[prop_axis] + (self.feed_shift * prop_dist),
+            )
+        else:
+            _, prop_pos = mesh.nearest_mesh_line(
+                prop_axis,
+                self.box.max_corner[prop_axis] - (self.feed_shift * prop_dist),
+            )
+
+        box.max_corner[prop_axis] = prop_pos
+        box.min_corner[prop_axis] = prop_pos
+
+        return box

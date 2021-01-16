@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple
 from warnings import warn
 import numpy as np
+from shapely.geometry import LineString
 from CSXCAD.CSTransform import CSTransform
 from CSXCAD.CSProperties import CSProperties
 from CSXCAD.CSPrimitives import CSPrimitives
@@ -28,7 +29,7 @@ from pyems.coordinate import (
     C3TupleOp,
 )
 from pyems.simulation import Simulation
-from pyems.port import MicrostripPort, CoaxPort, DifferentialMicrostripPort
+from pyems.port import MicrostripPort, CoaxPort, DifferentialMicrostripPort, LumpedPort
 import pyems.calc as calc
 from pyems.priority import priorities
 from pyems.material import Dielectric
@@ -2756,3 +2757,509 @@ class Coax(Structure):
         """
         """
         return "Coax_shield_" + str(self._index)
+
+class IC(Structure):
+    """
+    Integrated Circuit structure.
+
+    Build up layers of the IC without any connections (metal).
+    Typically starts with silicon substrate, epitaxial and then
+    several layers of silicon dioxide.
+
+    The configuration is provided as a dictionary, normally stored
+    in a JSON/YAML configuration file.
+    """
+
+    def __init__(
+        self,
+        sim:        Simulation,
+        layers:     dict,
+        length:     float,
+        width:      float,
+        position:   C3TupleOp = (0, 0, 0),
+    ):
+        """
+        :param layers: Dictionary defining the IC structure with three
+            primary sections; insulators, conductors, vias.
+        :param length: Length (using the dimensional unit set) of the
+            integrated circuit in the x-direction.
+        :param width: Width of the integrated circuit in the y-direction.
+        :param position: The position of the top middle of the IC.
+        """
+        self._layers = layers
+        self._length = length
+        self._width  = width
+        self._position = c3_maybe_tuple(position)
+        super().__init__(sim)
+
+        if self.position is not None:
+            self.construct(self.position)
+
+    @property
+    def position(self) -> Coordinate3:
+        """
+        """
+        return self._position
+
+    @property
+    def width(self) -> float:
+        """
+        """
+        return self._width
+
+    @property
+    def length(self) -> float:
+        """
+        """
+        return self._length
+
+    @property
+    def layers(self) -> float:
+        """
+        """
+        return self._layers
+
+    def conductor_layer_elevation(self, layer_index: int) -> float:
+        """
+        """
+
+        insulator_index = self._layers["conductors"][layer_index]["insulator"]
+
+        height = 0
+        for i in range(insulator_index):
+            height += self._layers["insulators"][i]["t"]
+
+        return self.position.z - height
+
+    def construct(self, position: C3Tuple) -> None:
+        """
+        """
+        self._position = c3_maybe_tuple(position)
+        zpos = 0
+        for layer in range(len(self._layers['insulators'])):
+            zpos = self._construct_layer(zpos, layer)
+
+    def _construct_layer(self, zpos: float, layer_index: int) -> float:
+        """
+        """
+        return self._construct_insulator_layer(zpos, layer_index)
+
+    def _construct_insulator_layer(
+        self, zpos: float, layer_index: int
+    ) -> None:
+        """
+        """
+        ref_freq = self.sim.reference_frequency
+        layer_prop = add_material(
+            csx     = self.sim.csx,
+            name    = self._layers["insulators"][layer_index]["name"],
+            epsilon = self._layers["insulators"][layer_index]["eps"],
+            kappa   = self._layers["insulators"][layer_index]["kappa"],
+            color   = colors["soldermask"],
+        )
+        xbounds = self._x_bounds()
+        ybounds = self._y_bounds()
+
+        if layer_index == 0:
+            zbounds = (0, self._layers["insulators"][layer_index]["t"])
+        else:
+            base = 0
+            for i in range(layer_index):
+                base += self._layers["insulators"][i]["t"]
+
+            zbounds = (base, base + self._layers["insulators"][layer_index]["t"])
+
+        construct_box(
+            prop=layer_prop,
+            box=Box3(
+                (xbounds[0], ybounds[0], zbounds[0]),
+                (xbounds[1], ybounds[1], zbounds[1]),
+            ),
+            priority=priorities["substrate"],
+        )
+
+        return zbounds[0]
+
+    def _x_bounds(self) -> Tuple[float, float]:
+        """
+
+        """
+        return (
+            self.position.x - (self._length / 2),
+            self.position.x + (self._length / 2),
+        )
+
+    def _y_bounds(self) -> Tuple[float, float]:
+        """
+        """
+        return (
+            self.position.y - (self._width / 2),
+            self.position.y + (self._width / 2),
+        )
+
+class Inductor(Structure):
+    """
+    Create a planar inductor.
+
+    Can either be a square or octogonal inductor with parameterised
+    sizes.
+    """
+
+    unique_index = 0
+
+    def __init__(
+        self,
+        ic:         IC,
+        position:   C2TupleOp,
+        width:      float,
+        spacing:    float,
+        turns:      float,
+        radius:     float,
+        sides:      float,
+        feedlength: float,
+        layer:      str,
+        transform:  CSTransform = None,
+        resolution: float = None,
+    ):
+        """
+        TODO
+        """
+
+        assert turns % 1 == 0, "Only integer number of turns are currently supported"
+        assert sides in [4,8], "Only square and octogonal inductors are currently supported"
+
+        self._ic            = ic
+        self._position      = c2_maybe_tuple(position)
+        self._width         = width
+        self._spacing       = spacing
+        self._turns         = turns
+        self._radius        = radius
+        self._sides         = sides
+        self._feedlength    = feedlength
+        self._layer         = layer
+        self._transform     = transform
+        self._resolution    = resolution
+        self._index         = None
+        self._polygons      = []
+
+        self._propagation_axis = Axis("x")
+
+        # TODO fix me!
+        self._port_number = 0
+
+        if self.position is not None:
+            self.construct(self.position)
+
+    @property
+    def port_number(self) -> int:
+        """
+        """
+        return self._port_number
+
+    @property
+    def pcb(self) -> int:
+        """
+        """
+        return self._pcb
+
+    @property
+    def position(self) -> Coordinate2:
+        """
+        """
+        return self._position
+
+    @property
+    def transform(self) -> CSTransform:
+        """
+        """
+        return self._transform
+
+    def construct(
+        self, position: C2Tuple, transform: CSTransform = None
+    ) -> None:
+        """
+        """
+        self._position = c2_maybe_tuple(position)
+        self._transform = append_transform(self._transform, transform)
+        self._index = self._get_inc_ctr()
+
+        # find the layer index
+        self.layer_index = -1
+        for i, layer in enumerate(self._ic.layers["conductors"]):
+            if self._ic.layers["conductors"][layer]["name"] == self._layer:
+                self.layer_index = i
+                break
+        assert self.layer_index > 0, "Layer not found"
+        
+        # create the top and bottom segments of the inductor
+        self._construct_windings(winding='main')
+        self._construct_windings(winding='feed')
+        self._construct_windings(winding='feedvia')
+        
+        # create the via to join the two segments
+        # self._construct_via(winding='main')
+        # self._construct_via(winding='feed')
+
+        # self._add_ports()
+
+
+    def _add_ports(self):
+        """
+        """
+
+        box = self._port_box()
+        LumpedPort(
+            sim=self._ic.sim,
+            box=box,
+            propagation_axis=Axis('y'),
+            excitation_axis=Axis('x'),
+            number=self.port_number,
+            # excite=self._excite,
+            excite=True,
+            # feed_impedance=self._feed_impedance,
+            feed_impedance=None,
+            # feed_impedance=50,
+            # feed_shift=self._feed_shift,
+            feed_shift=0.2,
+            # ref_impedance=self._ref_impedance,
+            ref_impedance=None,
+            # ref_impedance=50,
+            # measurement_shift=self._measurement_shift,
+            measurement_shift=0.5,
+        )
+
+
+
+
+    def _construct_windings(self, winding='main') -> None:
+        """
+        """
+
+        # pre-calculate the inductor winding pitch
+        pitch  = self._width + self._spacing
+        points = []
+
+        if winding == 'main':
+
+            # form the square unit shape
+            unit_shape4 = [ [ 1, -1],
+                            [ 1,  1],
+                            [-1,  1],
+                            [-1, -1]]
+
+            # form the octagon unit shape
+            l_2 = 1/(1+np.sqrt(2))
+            unit_shape8 = [ [ l_2, -1   ],
+                            [ 1,   -l_2 ],
+                            [ 1,    l_2 ],
+                            [ l_2,  1   ],
+                            [-l_2,  1   ],
+                            [-1,    l_2 ],
+                            [-1,   -l_2 ],
+                            [-l_2, -1   ]]
+
+            # select the shape
+            if self._sides == 4:
+                unit_shape = unit_shape4
+            else:
+                unit_shape = unit_shape8
+
+            ### starting point at feed
+            points.append([pitch/2,  -self._radius-self._feedlength])
+            points.append([pitch/2,  -self._radius])
+
+            ### create the loop points
+            for loop in range(self._turns):
+                for corner in range(self._sides):
+
+                    if (corner < self._sides-1 and self._sides == 4) or \
+                            (corner < self._sides-2 and self._sides == 8):
+                        points.append([
+                                        unit_shape[corner][0]*(self._radius-loop*pitch),  
+                                        unit_shape[corner][1]*(self._radius-loop*pitch)
+                                    ])
+                    else:
+                        points.append([
+                                        unit_shape[corner][0]*(self._radius-loop*pitch),  
+                                        unit_shape[corner][1]*(self._radius-(loop+1)*pitch)
+                                    ])
+
+            ### finished now draw last point
+            points.append([-pitch/2,  -(self._radius-self._turns*pitch)])
+
+        # create the bottom feed
+        elif winding == 'feed':
+            points.append([-pitch/2,  -self._radius-self._feedlength])
+            points.append([-pitch/2,  -self._radius+self._turns*pitch])
+
+        elif winding == 'feedvia':
+            points.append([pitch/2,  -self._radius-self._feedlength])
+            points.append([pitch/2,  -self._radius-self._feedlength])
+
+        # select an appropriate name
+        if winding == 'main':
+            name = self._inductor_name()+('_main')
+        elif winding == 'feed':
+            name = self._inductor_name()+('_feed')
+        elif winding == 'feedvia':
+            name = self._inductor_name()+('feedvia')
+
+        # grow the thickness of the shape
+        line = LineString(points)
+        dilated = line.buffer(self._width/2, cap_style=3, join_style=2)
+        dilated_points = dilated.exterior.xy
+        poly_points = []
+        for i in range(len(dilated_points[0])):
+            poly_points.append( Coordinate2(dilated_points[0][i], dilated_points[1][i]) )
+
+        # snap to grid
+        if self._resolution:
+            for point in poly_points:
+
+                # snap the x points
+                #  horrible workaround due to problems with floating point accuracy and modulo
+                temp = point[0] % self._resolution
+                if (abs(temp) > 1e-6 and temp < 0.5*self._resolution) or (abs(temp-self._resolution) > 1e-6 and temp > 0.5*self._resolution):
+                    if point[0] < 0:
+                        point[0] = (int(point[0] / self._resolution)-1)*self._resolution
+                    else:
+                        point[0] = (int(point[0] / self._resolution)+1)*self._resolution
+                
+                # snap the y points
+                #  horrible workaround due to problems with floating point accuracy and modulo
+                temp = point[1] % self._resolution
+                if (abs(temp) > 1e-6 and temp < 0.5*self._resolution) or (abs(temp-self._resolution) > 1e-6 and temp > 0.5*self._resolution):
+                    if point[1] < 0:
+                        point[1] = (int(point[1] / self._resolution)-1)*self._resolution
+                    else:
+                        point[1] = (int(point[1] / self._resolution)+1)*self._resolution
+        
+        # save the inductor shape
+        self.inductor_shape = poly_points
+
+        # for the feed we use the layer below
+        if winding == 'main':
+            selected_layer_index = self.layer_index
+        else:
+            selected_layer_index = self.layer_index - 1
+
+        # # create the trace properties
+        # trace_prop = add_conducting_sheet(
+        #     csx             = self._ic.sim.csx,
+        #     name            = name,
+        #     conductivity    = self._ic.layers["conductors"][selected_layer_index]["kappa"],
+        #     thickness       = self._ic.layers["conductors"][selected_layer_index]["t"],
+        # )
+        
+        trace_prop = add_material(
+            csx             = self._ic.sim.csx,
+            name            = name,
+            epsilon         = 1,
+            mue             = 1,
+            kappa           = self._ic.layers["conductors"][selected_layer_index]["kappa"],
+            sigma           = 0.0
+        )
+
+        # box = construct_box(
+        #     prop=trace_prop,
+        #     box=Box3(tuple([-40, 40, 0]), tuple([-50, 20, -1])),
+        #     transform=self.transform,
+        #     priority=priorities["trace"],
+        # )
+        # poly_pts = prim_coords2(box)
+        # self._polygons.append(poly_pts)
+
+        # form the polygon shape with thickness of the conductor
+        poly = construct_polygon(
+            prop        = trace_prop,
+            points      = poly_points,
+            normal      = Axis("z"),
+            elevation   = -self._ic.conductor_layer_elevation(selected_layer_index),
+            priority    = priorities["trace"],
+            thickness   = self._ic.layers["conductors"][selected_layer_index]["t"]
+        )
+
+        # format the points to 2D and add to the class
+        poly_points_coords = prim_coords2(poly)
+        self._polygons.append(poly_points_coords)
+
+    
+    def _construct_via(self, winding='main') -> None:
+        """
+        """
+
+        pitch  = self._width + self._spacing
+
+        via_info = self._ic.layers["vias"][self.layer_index-1]
+
+        # find how many vias we can fit
+        number_vias = int((self._width - 2*via_info["overplot2"])/(0.5*via_info["width"]+via_info["space"])) 
+
+        # find via z coordinates
+        bottom = self._ic.conductor_layer_elevation(self.layer_index)
+        top = self._ic.conductor_layer_elevation(self.layer_index-1)-self._ic.layers["conductors"][self.layer_index-1]["t"]
+
+        # create the trace properties
+        # trace_prop = add_conducting_sheet(
+        #     csx             = self._ic.sim.csx,
+        #     name            = 'inductor_via',
+        #     conductivity    = via_info["kappa"],
+        #     thickness       = top-bottom,
+        # )
+
+        trace_prop = add_material(
+            csx             = self._ic.sim.csx,
+            name            = 'inductor_via',
+            epsilon         = 1,
+            mue             = 1,
+            kappa           = via_info["kappa"],
+            sigma           = 0.0
+        )
+
+
+        if winding == 'main':
+            via_center_x = pitch/2
+            via_center_y = -self._radius-self._feedlength
+            
+            start = [via_center_x-via_info["width"]/2, via_center_y-via_info["width"]/2, -top]
+            stop =  [via_center_x+via_info["width"]/2, via_center_y+via_info["width"]/2, -bottom]
+        elif winding == 'feed':
+            via_center_x = -pitch/2
+            via_center_y = -self._radius+self._turns*pitch
+
+            start = [via_center_x-via_info["width"]/2, via_center_y-via_info["width"]/2, -top]
+            stop =  [via_center_x+via_info["width"]/2, via_center_y+via_info["width"]/2, -bottom]
+
+
+        box = construct_box(
+            prop=trace_prop,
+            box=Box3(tuple(start), tuple(stop)),
+            transform=self.transform,
+            priority=priorities["trace"],
+        )
+        poly_pts = prim_coords2(box)
+        self._polygons.append(poly_pts)
+
+
+    def _inductor_name(self) -> str:
+        """
+        """
+        return "inductor_" + str(self._index)
+
+
+    def _port_box(self) -> Box3:
+        """
+        """
+        pitch  = self._width + self._spacing
+
+        box = Box3(
+            Coordinate3(None, None, None), Coordinate3(None, None, None)
+        )
+        box.min_corner[Axis("x").axis] = -(pitch/2 - self._spacing/2)
+        box.max_corner[Axis("x").axis] =  (pitch/2 - self._spacing/2)
+        box.min_corner[Axis("y").axis] = -self._radius-self._feedlength-self._width/2
+        box.max_corner[Axis("y").axis] = -self._radius-self._feedlength+self._width/2
+        box.min_corner[Axis("z").axis] = -self._ic.conductor_layer_elevation(self.layer_index-1)
+        box.max_corner[Axis("z").axis] = -self._ic.conductor_layer_elevation(self.layer_index-1)+self._ic.layers["conductors"][self.layer_index-1]["t"]
+
+        return box
