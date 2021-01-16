@@ -2997,8 +2997,8 @@ class Inductor(Structure):
         self._construct_windings(winding='feedvia')
         
         # create the via to join the two segments
-        # self._construct_via(winding='main')
-        # self._construct_via(winding='feed')
+        self._construct_via(winding='main')
+        self._construct_via(winding='feed')
 
         # self._add_ports()
 
@@ -3143,14 +3143,7 @@ class Inductor(Structure):
         else:
             selected_layer_index = self.layer_index - 1
 
-        # # create the trace properties
-        # trace_prop = add_conducting_sheet(
-        #     csx             = self._ic.sim.csx,
-        #     name            = name,
-        #     conductivity    = self._ic.layers["conductors"][selected_layer_index]["kappa"],
-        #     thickness       = self._ic.layers["conductors"][selected_layer_index]["t"],
-        # )
-        
+        # create the trace properties       
         trace_prop = add_material(
             csx             = self._ic.sim.csx,
             name            = name,
@@ -3159,15 +3152,6 @@ class Inductor(Structure):
             kappa           = self._ic.layers["conductors"][selected_layer_index]["kappa"],
             sigma           = 0.0
         )
-
-        # box = construct_box(
-        #     prop=trace_prop,
-        #     box=Box3(tuple([-40, 40, 0]), tuple([-50, 20, -1])),
-        #     transform=self.transform,
-        #     priority=priorities["trace"],
-        # )
-        # poly_pts = prim_coords2(box)
-        # self._polygons.append(poly_pts)
 
         # form the polygon shape with thickness of the conductor
         poly = construct_polygon(
@@ -3200,13 +3184,6 @@ class Inductor(Structure):
         top = self._ic.conductor_layer_elevation(self.layer_index-1)-self._ic.layers["conductors"][self.layer_index-1]["t"]
 
         # create the trace properties
-        # trace_prop = add_conducting_sheet(
-        #     csx             = self._ic.sim.csx,
-        #     name            = 'inductor_via',
-        #     conductivity    = via_info["kappa"],
-        #     thickness       = top-bottom,
-        # )
-
         trace_prop = add_material(
             csx             = self._ic.sim.csx,
             name            = 'inductor_via',
@@ -3216,7 +3193,7 @@ class Inductor(Structure):
             sigma           = 0.0
         )
 
-
+        # define the via shape depending on purpose
         if winding == 'main':
             via_center_x = pitch/2
             via_center_y = -self._radius-self._feedlength
