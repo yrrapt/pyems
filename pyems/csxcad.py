@@ -276,6 +276,7 @@ def construct_polygon(
         points=centered_pts,
         norm_dir=normal.intval(),
         elevation=0,
+        thickness=thickness
     )
     apply_transform(prim, transform)
     tr = CSTransform()
@@ -497,6 +498,7 @@ def _add_polygon(
     elevation = fp_nearest(elevation)
 
     if thickness:
+        thickness = fp_nearest(thickness)
         prim = prop.AddLinPoly(
             priority=priority,
             points=points,
