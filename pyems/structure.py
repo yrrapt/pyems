@@ -2822,13 +2822,7 @@ class IC(Structure):
     def conductor_layer_elevation(self, layer_index: int) -> float:
         """
         """
-
-        insulator_index = self._layers["conductors"][layer_index]["insulator"]
-
-        height = 0
-        for i in range(insulator_index):
-            height += self._layers["insulators"][i]["t"]
-
+        height = self._layers["conductors"][layer_index]["h"]
         return self.position.z - height
 
     def construct(self, position: C3Tuple) -> None:
@@ -2850,12 +2844,20 @@ class IC(Structure):
         """
         """
         ref_freq = self.sim.reference_frequency
+
+        if layer_index == 0:
+            color = colors["soldermask"]
+        elif layer_index == 1:
+            color = "#023c72"
+        else:
+            color = colors["ptfe"]
+
         layer_prop = add_material(
             csx     = self.sim.csx,
             name    = self._layers["insulators"][layer_index]["name"],
-            epsilon = self._layers["insulators"][layer_index]["eps"],
-            kappa   = self._layers["insulators"][layer_index]["kappa"],
-            color   = colors["soldermask"],
+            epsilon = [self._layers["insulators"][layer_index]["eps"]]*3,
+            kappa   = [self._layers["insulators"][layer_index]["kappa"]]*3,
+            color   = color,
         )
         xbounds = self._x_bounds()
         ybounds = self._y_bounds()
@@ -3000,35 +3002,25 @@ class Inductor(Structure):
         self._construct_via(winding='main')
         self._construct_via(winding='feed')
 
-        # self._add_ports()
+        self._add_port()
 
 
-    def _add_ports(self):
+    def _add_port(self):
         """
         """
 
         box = self._port_box()
+
         LumpedPort(
             sim=self._ic.sim,
             box=box,
             propagation_axis=Axis('y'),
             excitation_axis=Axis('x'),
             number=self.port_number,
-            # excite=self._excite,
             excite=True,
-            # feed_impedance=self._feed_impedance,
-            feed_impedance=None,
-            # feed_impedance=50,
-            # feed_shift=self._feed_shift,
-            feed_shift=0.2,
-            # ref_impedance=self._ref_impedance,
-            ref_impedance=None,
-            # ref_impedance=50,
-            # measurement_shift=self._measurement_shift,
-            measurement_shift=0.5,
+            feed_impedance=50,
+            ref_impedance=50,
         )
-
-
 
 
     def _construct_windings(self, winding='main') -> None:
@@ -3038,6 +3030,7 @@ class Inductor(Structure):
         # pre-calculate the inductor winding pitch
         pitch  = self._width + self._spacing
         points = []
+        polys = []
 
         if winding == 'main':
 
@@ -3064,37 +3057,133 @@ class Inductor(Structure):
             else:
                 unit_shape = unit_shape8
 
-            ### starting point at feed
-            points.append([pitch/2,  -self._radius-self._feedlength])
-            points.append([pitch/2,  -self._radius])
+            # ### starting point at feed
+            points.append([pitch/2+self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)),  -self._radius])
 
             ### create the loop points
             for loop in range(self._turns):
                 for corner in range(self._sides):
 
-                    if (corner < self._sides-1 and self._sides == 4) or \
-                            (corner < self._sides-2 and self._sides == 8):
+                    if (corner == 6 and self._sides == 8):
+                        points.append([
+                                        unit_shape[corner][0]*(self._radius-loop*pitch),  
+                                        unit_shape[corner][1]*(self._radius-(loop)*pitch)+pitch
+                                    ])
+                        
+                    elif (corner == 3 and self._sides == 4) or \
+                            (corner == 7 and self._sides == 8):
+                        points.append([
+                                        unit_shape[corner][0]*(self._radius-(loop)*pitch),  
+                                        unit_shape[corner][1]*(self._radius-(loop+1)*pitch)
+                                    ])
+                    
+                    else:
                         points.append([
                                         unit_shape[corner][0]*(self._radius-loop*pitch),  
                                         unit_shape[corner][1]*(self._radius-loop*pitch)
                                     ])
-                    else:
-                        points.append([
-                                        unit_shape[corner][0]*(self._radius-loop*pitch),  
-                                        unit_shape[corner][1]*(self._radius-(loop+1)*pitch)
-                                    ])
 
             ### finished now draw last point
-            points.append([-pitch/2,  -(self._radius-self._turns*pitch)])
+            points.append([-pitch/2 - self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)),  -(self._radius-self._turns*pitch)])
+
+            ### break into separate polygons
+            for i in range(len(points)-1):
+
+                line_points = points[i:i+2]
+
+                if self._sides == 8:
+
+                    # vertical line
+                    if line_points[0][0] == line_points[1][0]:
+                        
+                        if line_points[1][0] < 0 and line_points[1][1] < 0:
+
+                            point01 = line_points[0][1] - np.sign(line_points[0][1])*(self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)))
+                            point11 = line_points[1][1] - np.sign(line_points[1][1])*(self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)))
+
+                            point00 = line_points[0][0]
+                            point10 = line_points[1][0]
+
+                        else:
+                            point01 = line_points[0][1] - np.sign(line_points[0][1])*(self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)))
+                            point11 = line_points[1][1] - np.sign(line_points[1][1])*(self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)))
+
+                            point00 = line_points[0][0]
+                            point10 = line_points[1][0]
+                    
+                    # horizontal line
+                    elif line_points[0][1] == line_points[1][1]:
+
+                        if line_points[1][0] < 0 and line_points[1][1] < 0:
+
+                            point00 = line_points[0][0] - np.sign(line_points[0][0])*(self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)))
+                            point10 = line_points[1][0] - np.sign(line_points[1][0])*(self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)))
+
+                            point11 = line_points[1][1]
+                            point01 = line_points[0][1]
+
+                        else:
+                            point00 = line_points[0][0] - np.sign(line_points[0][0])*(self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)))
+                            point10 = line_points[1][0] - np.sign(line_points[1][0])*(self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)))
+
+                            point11 = line_points[1][1]
+                            point01 = line_points[0][1]
+                    else:
+
+                        if line_points[0][0] < 0 and line_points[0][1] < 0 and line_points[1][1] < 0 and line_points[1][1] < 0:
+                            point00 = line_points[0][0] - np.sign(line_points[0][0]-line_points[1][0])*(self._width*(0.5-np.tan(np.pi/8)/np.sqrt(2))) + self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8))*0
+                            point01 = line_points[0][1] - np.sign(line_points[0][1]-line_points[1][1])*(self._width*(0.5-np.tan(np.pi/8)/np.sqrt(2))) + self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8))*0
+                            point10 = line_points[1][0] - np.sign(line_points[1][0]-line_points[0][0])*(self._width*(0.5-np.tan(np.pi/8)/np.sqrt(2))) + self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8))*0
+                            point11 = line_points[1][1] - np.sign(line_points[1][1]-line_points[0][1])*(self._width*(0.5-np.tan(np.pi/8)/np.sqrt(2))) + self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8))*0
+
+                        else:
+                            point00 = line_points[0][0] - np.sign(line_points[0][0]-line_points[1][0])*(self._width*(0.5-np.tan(np.pi/8)/np.sqrt(2)))
+                            point01 = line_points[0][1] - np.sign(line_points[0][1]-line_points[1][1])*(self._width*(0.5-np.tan(np.pi/8)/np.sqrt(2)))
+                            point10 = line_points[1][0] - np.sign(line_points[1][0]-line_points[0][0])*(self._width*(0.5-np.tan(np.pi/8)/np.sqrt(2)))
+                            point11 = line_points[1][1] - np.sign(line_points[1][1]-line_points[0][1])*(self._width*(0.5-np.tan(np.pi/8)/np.sqrt(2)))
+
+                else:
+                    point00 = line_points[0][0]
+                    point01 = line_points[0][1]
+                    point10 = line_points[1][0]
+                    point11 = line_points[1][1]
+
+                line = LineString([[point00, point01],[point10, point11]])
+                dilated = line.buffer(0.5*self._width, cap_style=3, join_style=2)
+
+                temp = []
+                for i in range(len(dilated.exterior.xy[0])):
+                    temp.append( Coordinate2(dilated.exterior.xy[0][i], dilated.exterior.xy[1][i]) )
+                polys.append(temp)
+
+            # add the feed
+            line = LineString([[pitch/2,  -self._radius-self._feedlength], [pitch/2,  -self._radius]])
+            dilated = line.buffer(0.5*self._width, cap_style=3, join_style=2)
+
+            temp = []
+            for i in range(len(dilated.exterior.xy[0])):
+                temp.append( Coordinate2(dilated.exterior.xy[0][i], dilated.exterior.xy[1][i]) )
+            polys.append(temp)
 
         # create the bottom feed
         elif winding == 'feed':
-            points.append([-pitch/2,  -self._radius-self._feedlength])
-            points.append([-pitch/2,  -self._radius+self._turns*pitch])
+            line = LineString([[-pitch/2,  -self._radius-2*self._feedlength], [-pitch/2,  -self._radius+self._turns*pitch]])
+            dilated = line.buffer(0.5*self._width, cap_style=3, join_style=2)
+
+            temp = []
+            for i in range(len(dilated.exterior.xy[0])):
+                temp.append( Coordinate2(dilated.exterior.xy[0][i], dilated.exterior.xy[1][i]) )
+            polys.append(temp)
+
 
         elif winding == 'feedvia':
-            points.append([pitch/2,  -self._radius-self._feedlength])
-            points.append([pitch/2,  -self._radius-self._feedlength])
+            line = LineString([[pitch/2,  -self._radius-2*self._feedlength], [pitch/2,  -self._radius-self._feedlength]])
+            dilated = line.buffer(0.5*self._width, cap_style=3, join_style=2)
+
+            temp = []
+            for i in range(len(dilated.exterior.xy[0])):
+                temp.append( Coordinate2(dilated.exterior.xy[0][i], dilated.exterior.xy[1][i]) )
+            polys.append(temp)
 
         # select an appropriate name
         if winding == 'main':
@@ -3104,68 +3193,58 @@ class Inductor(Structure):
         elif winding == 'feedvia':
             name = self._inductor_name()+('feedvia')
 
-        # grow the thickness of the shape
-        line = LineString(points)
-        dilated = line.buffer(self._width/2, cap_style=3, join_style=2)
-        dilated_points = dilated.exterior.xy
-        poly_points = []
-        for i in range(len(dilated_points[0])):
-            poly_points.append( Coordinate2(dilated_points[0][i], dilated_points[1][i]) )
-
         # snap to grid
         if self._resolution:
-            for point in poly_points:
+            for poly_points in polys:
+                for point in poly_points:
 
-                # snap the x points
-                #  horrible workaround due to problems with floating point accuracy and modulo
-                temp = point[0] % self._resolution
-                if (abs(temp) > 1e-6 and temp < 0.5*self._resolution) or (abs(temp-self._resolution) > 1e-6 and temp > 0.5*self._resolution):
-                    if point[0] < 0:
-                        point[0] = (int(point[0] / self._resolution)-1)*self._resolution
-                    else:
-                        point[0] = (int(point[0] / self._resolution)+1)*self._resolution
-                
-                # snap the y points
-                #  horrible workaround due to problems with floating point accuracy and modulo
-                temp = point[1] % self._resolution
-                if (abs(temp) > 1e-6 and temp < 0.5*self._resolution) or (abs(temp-self._resolution) > 1e-6 and temp > 0.5*self._resolution):
-                    if point[1] < 0:
-                        point[1] = (int(point[1] / self._resolution)-1)*self._resolution
-                    else:
-                        point[1] = (int(point[1] / self._resolution)+1)*self._resolution
-        
-        # save the inductor shape
-        self.inductor_shape = poly_points
-
+                    # snap the x points
+                    #  horrible workaround due to problems with floating point accuracy and modulo
+                    temp = point[0] % self._resolution
+                    if (abs(temp) > 1e-6 and temp < 0.5*self._resolution) or (abs(temp-self._resolution) > 1e-6 and temp > 0.5*self._resolution):
+                        if point[0] < 0:
+                            point[0] = (int(point[0] / self._resolution)-1)*self._resolution
+                        else:
+                            point[0] = (int(point[0] / self._resolution)+1)*self._resolution
+                    
+                    # snap the y points
+                    #  horrible workaround due to problems with floating point accuracy and modulo
+                    temp = point[1] % self._resolution
+                    if (abs(temp) > 1e-6 and temp < 0.5*self._resolution) or (abs(temp-self._resolution) > 1e-6 and temp > 0.5*self._resolution):
+                        if point[1] < 0:
+                            point[1] = (int(point[1] / self._resolution)-1)*self._resolution
+                        else:
+                            point[1] = (int(point[1] / self._resolution)+1)*self._resolution
+            
         # for the feed we use the layer below
         if winding == 'main':
             selected_layer_index = self.layer_index
         else:
             selected_layer_index = self.layer_index - 1
 
-        # create the trace properties       
-        trace_prop = add_material(
-            csx             = self._ic.sim.csx,
-            name            = name,
-            epsilon         = 1,
-            mue             = 1,
-            kappa           = self._ic.layers["conductors"][selected_layer_index]["kappa"],
-            sigma           = 0.0
-        )
+        # create the shapes
+        for poly in polys:
 
-        # form the polygon shape with thickness of the conductor
-        poly = construct_polygon(
-            prop        = trace_prop,
-            points      = poly_points,
-            normal      = Axis("z"),
-            elevation   = -self._ic.conductor_layer_elevation(selected_layer_index),
-            priority    = priorities["trace"],
-            thickness   = self._ic.layers["conductors"][selected_layer_index]["t"]
-        )
+            # create the trace properties       
+            trace_prop = add_material(
+                csx             = self._ic.sim.csx,
+                name            = name,
+                epsilon         = 1,
+                mue             = 1,
+                kappa           = [self._ic.layers["conductors"][selected_layer_index]["kappa"]]*3,
+                sigma           = 0.0,
+                color           = colors["copper"],
+            )
 
-        # format the points to 2D and add to the class
-        poly_points_coords = prim_coords2(poly)
-        self._polygons.append(poly_points_coords)
+            # form the polygon shape with thickness of the conductor
+            poly = construct_polygon(
+                prop        = trace_prop,
+                points      = poly,
+                normal      = Axis("z"),
+                elevation   = -self._ic.conductor_layer_elevation(selected_layer_index),
+                priority    = priorities["trace"],
+                thickness   = self._ic.layers["conductors"][selected_layer_index]["t"]
+            )
 
     
     def _construct_via(self, winding='main') -> None:
@@ -3180,8 +3259,8 @@ class Inductor(Structure):
         number_vias = int((self._width - 2*via_info["overplot2"])/(0.5*via_info["width"]+via_info["space"])) 
 
         # find via z coordinates
-        bottom = self._ic.conductor_layer_elevation(self.layer_index)
-        top = self._ic.conductor_layer_elevation(self.layer_index-1)-self._ic.layers["conductors"][self.layer_index-1]["t"]
+        bottom = self._ic.conductor_layer_elevation(self.layer_index)-self._ic.layers["conductors"][self.layer_index]["t"]
+        top = self._ic.conductor_layer_elevation(self.layer_index-1)
 
         # create the trace properties
         trace_prop = add_material(
@@ -3189,8 +3268,9 @@ class Inductor(Structure):
             name            = 'inductor_via',
             epsilon         = 1,
             mue             = 1,
-            kappa           = via_info["kappa"],
-            sigma           = 0.0
+            kappa           = [via_info["kappa"]]*3,
+            sigma           = 0.0,
+            color           = colors["copper"],
         )
 
         # define the via shape depending on purpose
@@ -3234,8 +3314,8 @@ class Inductor(Structure):
         )
         box.min_corner[Axis("x").axis] = -(pitch/2 - self._spacing/2)
         box.max_corner[Axis("x").axis] =  (pitch/2 - self._spacing/2)
-        box.min_corner[Axis("y").axis] = -self._radius-self._feedlength-self._width/2
-        box.max_corner[Axis("y").axis] = -self._radius-self._feedlength+self._width/2
+        box.min_corner[Axis("y").axis] = -self._radius-self._feedlength-self._width/2 - self._feedlength + self._width/2
+        box.max_corner[Axis("y").axis] = -self._radius-self._feedlength+self._width/2 - self._feedlength + self._width/2
         box.min_corner[Axis("z").axis] = -self._ic.conductor_layer_elevation(self.layer_index-1)
         box.max_corner[Axis("z").axis] = -self._ic.conductor_layer_elevation(self.layer_index-1)+self._ic.layers["conductors"][self.layer_index-1]["t"]
 
