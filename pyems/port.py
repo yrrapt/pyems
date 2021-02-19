@@ -1876,9 +1876,7 @@ class LumpedPort(Port):
         number: int,
         excite: bool = False,
         feed_impedance: float = None,
-        feed_shift: float = 0.2,
         ref_impedance: float = None,
-        measurement_shift: float = 0.5,
     ):
         """
         :param sim: Simulation to which microstrip port is added.
@@ -1899,33 +1897,19 @@ class LumpedPort(Port):
             impedance measurement use the default value and PML, which
             gives better results than attempting to use a matching
             impedance.
-        :param feed_shift: The amount by which to shift the feed as a
-            fraction of the total port length.  The final position
-            will be influenced by this value but adjusted for the mesh
-            used.
         :param ref_impedance: The impedance used to calculate the port
             voltage and current values.  If left as the default value
             of None, the calculated characteristic impedance is used
             to calculate these values.
-        :param measurement_shift: The amount by which to shift the
-            measurement probes as a fraction of the total port length.
-            By default, the measurement port is placed halfway between
-            the start and stop.  Like `feed_shift`, the final position
-            will be adjusted for the mesh used.  This is important
-            since voltage probes need to lie on mesh lines and current
-            probes need to be placed equidistant between them.
         """
         super().__init__(sim=sim, number=number, excite=excite)
         self._box = box
         self._box.set_increasing()
-        self._excite = excite
         self._propagation_axis = propagation_axis
         self._excitation_axis = excitation_axis
         self._check_axes_perpendicular()
         self.feed_impedance = feed_impedance
-        self.feed_shift = feed_shift
         self._ref_impedance = ref_impedance
-        self.measurement_shift = measurement_shift
 
 
     @property
@@ -1939,11 +1923,6 @@ class LumpedPort(Port):
         """
         return self._propagation_axis
 
-    def get_feed_shift(self) -> float:
-        """
-        """
-        return self.feed_shift
-
     def _check_axes_perpendicular(self) -> None:
         """
         """
@@ -1951,7 +1930,6 @@ class LumpedPort(Port):
             raise ValueError(
                 "Excitation and propagation axes must be perpendicular."
             )
-
 
     def _trace_box(self) -> Box3:
         """
@@ -2023,11 +2001,11 @@ class LumpedPort(Port):
 
         excitation_axis = self._excitation_axis.axis
         if self._excitation_axis.is_positive_direction():
-            gnd_pos = self.box.min_corner[excitation_axis]
-            trace_pos = self.box.max_corner[excitation_axis]
+            positive_pos = self.box.max_corner[excitation_axis]
+            negative_pos = self.box.min_corner[excitation_axis]
         else:
-            gnd_pos = self.box.max_corner[excitation_axis]
-            trace_pos = self.box.min_corner[excitation_axis]
+            positive_pos = self.box.min_corner[excitation_axis]
+            negative_pos = self.box.max_corner[excitation_axis]
 
         prop_axis = self._propagation_axis.axis
         trace_prop_low = trace_box.min_corner[prop_axis]
@@ -2036,72 +2014,59 @@ class LumpedPort(Port):
             prop_index, vxmid = mesh.nearest_mesh_line(
                 prop_axis,
                 trace_box.min_corner[prop_axis]
-                + (
-                    self.measurement_shift * (trace_prop_high - trace_prop_low)
-                ),
             )
         else:
             prop_index, vxmid = mesh.nearest_mesh_line(
                 prop_axis,
                 trace_box.max_corner[prop_axis]
-                - (
-                    self.measurement_shift * (trace_prop_high - trace_prop_low)
-                ),
             )
         mesh.set_lines_equidistant(0, prop_index - 1, prop_index + 1)
 
-        v_prop_pos = [
-            mesh.get_mesh_line(
-                prop_axis, prop_index - self._propagation_direction()
-            ),
-            mesh.get_mesh_line(prop_axis, prop_index),
-            mesh.get_mesh_line(
-                prop_axis, prop_index + self._propagation_direction()
-            ),
-        ]
-        i_prop_pos = [
-            (v_prop_pos[0] + v_prop_pos[1]) / 2,
-            (v_prop_pos[1] + v_prop_pos[2]) / 2,
-        ]
+        # find the mesh position for voltage probe
+        v_prop_pos = mesh.get_mesh_line(prop_axis, prop_index),
+        
+        i_prop_pos = v_prop_pos
 
-        for idx in range(3):
-            box = Box3(
-                Coordinate3(None, None, None), Coordinate3(None, None, None)
+        box = Box3(
+            Coordinate3(None, None, None), Coordinate3(None, None, None)
+        )
+        box.min_corner[prop_axis] = v_prop_pos[0]
+        box.max_corner[prop_axis] = v_prop_pos[0]
+        box.min_corner[trace_perp_axis] = trace_perp_mid
+        box.max_corner[trace_perp_axis] = trace_perp_mid
+        box.min_corner[excitation_axis] = negative_pos
+        box.max_corner[excitation_axis] = positive_pos
+        print('v_prop_pos', v_prop_pos)
+        print('trace_perp_mid', trace_perp_mid)
+        print('negative_pos', negative_pos)
+        print('positive_pos', positive_pos)
+        self.vprobes.append(
+            Probe(
+                sim=self._sim,
+                box=box,
+                p_type=0,
+                weight=self._excitation_direction(),
             )
-            box.min_corner[prop_axis] = v_prop_pos[idx]
-            box.max_corner[prop_axis] = v_prop_pos[idx]
-            box.min_corner[trace_perp_axis] = trace_perp_mid
-            box.max_corner[trace_perp_axis] = trace_perp_mid
-            box.min_corner[excitation_axis] = gnd_pos
-            box.max_corner[excitation_axis] = trace_pos
-            self.vprobes.append(
-                Probe(
-                    sim=self._sim,
-                    box=box,
-                    p_type=0,
-                    weight=self._excitation_direction(),
-                )
-            )
+        )
 
-        for idx in range(2):
-            box = Box3(
-                Coordinate3(None, None, None), Coordinate3(None, None, None)
+        box = Box3(
+            Coordinate3(None, None, None), Coordinate3(None, None, None)
+        )
+        box.min_corner[prop_axis] = i_prop_pos[0]
+        box.max_corner[prop_axis] = i_prop_pos[0]
+        box.min_corner[trace_perp_axis] = trace_perp_low
+        box.max_corner[trace_perp_axis] = trace_perp_high
+        box.min_corner[excitation_axis] = positive_pos
+        box.max_corner[excitation_axis] = positive_pos
+        self.iprobes.append(
+            Probe(
+                sim=self._sim,
+                box=box,
+                p_type=1,
+                normal_axis=self._propagation_axis,
+                weight=-self._propagation_direction(),  # TODO negative??
             )
-            box.min_corner[prop_axis] = i_prop_pos[idx]
-            box.max_corner[prop_axis] = i_prop_pos[idx]
-            box.min_corner[trace_perp_axis] = trace_perp_low
-            box.max_corner[trace_perp_axis] = trace_perp_high
-            box.min_corner[excitation_axis] = trace_pos
-            box.max_corner[excitation_axis] = trace_pos
-            self.iprobes.append(
-                Probe(
-                    sim=self._sim,
-                    box=box,
-                    p_type=1,
-                    normal_axis=self._propagation_axis,
-                    weight=-self._propagation_direction(),  # TODO negative??
-                )
-            )
+        )
 
     def _feed_box(self, mesh: Mesh) -> Box3:
         """
@@ -2121,12 +2086,12 @@ class LumpedPort(Port):
         if self._propagation_axis.is_positive_direction():
             _, prop_pos = mesh.nearest_mesh_line(
                 prop_axis,
-                self.box.min_corner[prop_axis] + (self.feed_shift * prop_dist),
+                self.box.min_corner[prop_axis]
             )
         else:
             _, prop_pos = mesh.nearest_mesh_line(
                 prop_axis,
-                self.box.max_corner[prop_axis] - (self.feed_shift * prop_dist),
+                self.box.max_corner[prop_axis]
             )
 
         box.max_corner[prop_axis] = prop_pos
