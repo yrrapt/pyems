@@ -627,7 +627,7 @@ class Mesh:
         self._check_pml_mesh_uniform()
         self._check_mesh_smooth()
 
-        self._ensure_pml_structure_uniform()
+        # self._ensure_pml_structure_uniform()
 
     def _check_pml_mesh_uniform(self):
         """
