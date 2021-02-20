@@ -3278,14 +3278,18 @@ class Inductor(Structure):
             via_center_x = pitch/2
             via_center_y = -self._radius-self._feedlength
             
-            start = [via_center_x-via_info["width"]/2, via_center_y-via_info["width"]/2, -top]
-            stop =  [via_center_x+via_info["width"]/2, via_center_y+via_info["width"]/2, -bottom]
+            start = [via_center_x-self._width/2, via_center_y-self._width/2, -top]
+            stop =  [via_center_x+self._width/2, via_center_y+self._width/2, -bottom]
+            
+            # start = [via_center_x-via_info["width"]/2, via_center_y-via_info["width"]/2, -top]
+            # stop =  [via_center_x+via_info["width"]/2, via_center_y+via_info["width"]/2, -bottom]
+            
         elif winding == 'feed':
             via_center_x = -pitch/2
             via_center_y = -self._radius+self._turns*pitch
 
-            start = [via_center_x-via_info["width"]/2, via_center_y-via_info["width"]/2, -top]
-            stop =  [via_center_x+via_info["width"]/2, via_center_y+via_info["width"]/2, -bottom]
+            start = [via_center_x-self._width/2, via_center_y-self._width/2, -top]
+            stop =  [via_center_x+self._width/2, via_center_y+self._width/2, -bottom]
 
 
         box = construct_box(
@@ -3312,10 +3316,10 @@ class Inductor(Structure):
         box = Box3(
             Coordinate3(None, None, None), Coordinate3(None, None, None)
         )
-        box.min_corner[Axis("x").axis] = -(pitch/2 - self._spacing/2)
-        box.max_corner[Axis("x").axis] =  (pitch/2 - self._spacing/2)
-        box.min_corner[Axis("y").axis] = -self._radius-self._feedlength-self._width/2 - self._feedlength + self._width/2
-        box.max_corner[Axis("y").axis] = -self._radius-self._feedlength+self._width/2 - self._feedlength + self._width/2
+        box.min_corner[Axis("x").axis] = -(pitch/2 - self._width/2)
+        box.max_corner[Axis("x").axis] =  (pitch/2 - self._width/2)
+        box.min_corner[Axis("y").axis] = -self._radius-self._feedlength-self._width/2 - self._feedlength + self._width/4
+        box.max_corner[Axis("y").axis] = -self._radius-self._feedlength+self._width/2 - self._feedlength + self._width/4
         box.min_corner[Axis("z").axis] = -self._ic.conductor_layer_elevation(self.layer_index-1)
         box.max_corner[Axis("z").axis] = -self._ic.conductor_layer_elevation(self.layer_index-1)+self._ic.layers["conductors"][self.layer_index-1]["t"]
 
