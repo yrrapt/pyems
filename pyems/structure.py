@@ -3002,6 +3002,10 @@ class Inductor(Structure):
         self._construct_via(winding='main')
         self._construct_via(winding='feed')
 
+
+        self._construct_ground_pattern()
+
+
         self._add_port()
 
 
@@ -3086,6 +3090,8 @@ class Inductor(Structure):
             ### finished now draw last point
             points.append([-pitch/2 - self._width*(0.5*np.sqrt(2)-np.tan(np.pi/8)),  -(self._radius-self._turns*pitch)])
 
+            print('points', points)
+
             ### break into separate polygons
             for i in range(len(points)-1):
 
@@ -3168,6 +3174,7 @@ class Inductor(Structure):
         # create the bottom feed
         elif winding == 'feed':
             line = LineString([[-pitch/2,  -self._radius-2*self._feedlength], [-pitch/2,  -self._radius+self._turns*pitch]])
+            print([-pitch/2,  -self._radius-2*self._feedlength], [-pitch/2,  -self._radius+self._turns*pitch])
             dilated = line.buffer(0.5*self._width, cap_style=3, join_style=2)
 
             temp = []
@@ -3178,6 +3185,7 @@ class Inductor(Structure):
 
         elif winding == 'feedvia':
             line = LineString([[pitch/2,  -self._radius-2*self._feedlength], [pitch/2,  -self._radius-self._feedlength]])
+            print([pitch/2,  -self._radius-2*self._feedlength], [pitch/2,  -self._radius-self._feedlength])
             dilated = line.buffer(0.5*self._width, cap_style=3, join_style=2)
 
             temp = []
@@ -3245,6 +3253,80 @@ class Inductor(Structure):
                 priority    = priorities["trace"],
                 thickness   = self._ic.layers["conductors"][selected_layer_index]["t"]
             )
+
+
+    def _construct_ground_pattern(self) -> None:
+        """
+        """
+
+        overhang = self._radius*0.25
+        width   = 2.0
+        spacing = 2.0
+
+        shield_layer_index = 1
+        trace_prop = add_material(
+            csx             = self._ic.sim.csx,
+            name            = 'li',
+            epsilon         = 1,
+            mue             = 1,
+            kappa           = [self._ic.layers["conductors"][shield_layer_index]["kappa"]]*3,
+            sigma           = 0.0,
+            color           = colors["aluminum"],
+        )
+
+        # trace_prop = add_conducting_sheet(
+        #     csx=self._ic.sim.csx,
+        #     name='li',
+        #     conductivity=self._ic.layers["conductors"][shield_layer_index]["kappa"],
+        #     thickness=self._ic.layers["conductors"][shield_layer_index]["t"],
+        # )
+
+
+        for side in range(self._sides):
+
+            x = -int(self._radius / (width+spacing))*(width+spacing)
+            for finger in range(2*int(self._radius / (width+spacing))):
+
+                # trace_z = self._ic.conductor_layer_elevation(shield_layer_index)
+
+                # x = [ finger*(width+spacing), finger*(width+spacing)]
+                # y = [-self._radius-overhang, -x-spacing/2]
+
+                # start = [finger*(width+spacing)-width/2,    -self._radius-overhang,    trace_z]
+                # stop  = [finger*(width+spacing)+width/2,    -abs(x)-spacing/2,              trace_z]
+
+                start = [x-width/2,    -self._radius-overhang]
+                stop  = [x+width/2,    -abs(x)-spacing/2]
+
+                x += width+spacing
+
+
+                if side == 0:
+                    points = [  Coordinate2(x-width/2,    -self._radius-overhang), 
+                                Coordinate2(x+width/2,    -abs(x)-spacing)]
+                
+                elif side == 1:
+                    points = [  Coordinate2(self._radius+overhang, x-width/2), 
+                                Coordinate2(+abs(x)+spacing,      x+width/2,    )]
+
+                if side == 2:
+                    points = [  Coordinate2(x-width/2,    self._radius+overhang), 
+                                Coordinate2(x+width/2,    abs(x)+spacing)]
+                
+                elif side == 3:
+                    points = [  Coordinate2(-self._radius-overhang, x-width/2), 
+                                Coordinate2(-abs(x)-spacing,      x+width/2,    )]
+
+
+                # form the polygon shape with thickness of the conductor
+                poly = construct_polygon(
+                    prop        = trace_prop,
+                    points      = points,
+                    normal      = Axis("z"),
+                    elevation   = -self._ic.conductor_layer_elevation(shield_layer_index),
+                    priority    = priorities["trace"],
+                    thickness   = self._ic.layers["conductors"][shield_layer_index]["t"]
+                )
 
     
     def _construct_via(self, winding='main') -> None:
